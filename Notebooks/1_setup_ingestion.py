@@ -16,6 +16,7 @@ from pyspark.ml.clustering import KMeans
 from pyspark.ml.evaluation import MulticlassClassificationEvaluator, BinaryClassificationEvaluator
 from pyspark.ml.tuning import CrossValidator, ParamGridBuilder
 from pyspark.ml import Pipeline
+from pyspark.sql.functions import expr
 
 print("=== Sentiment Analysis at Scale: Customer Feedback Pipeline ===")
 print("Initializing Spark Session with optimized configuration...")
@@ -36,143 +37,144 @@ print(f"✓ Spark {spark.version} initialized successfully")
 print(f"✓ Available cores: {spark.sparkContext.defaultParallelism}")
 
 # ============================================================================
-# PHASE 1: DATA INGESTION & EXPANSION
+# PHASE 1: DATA INGESTION & EXPANSION (SPARK-NATIVE)
 # ============================================================================
 
-def expand_dataset_to_millions(original_df, target_rows=10_000_000):
-    """
-    Expand the dataset to 10M+ records by intelligent replication
-    with variations to simulate real-world data at scale
-    """
-    print(f"\n=== Expanding dataset from {len(original_df)} to {target_rows:,} records ===")
+print("\n=== Loading original reviews.csv into Spark ===")
 
-    current_count = len(original_df)
-    replication_factor = (target_rows // current_count) + 1
+spark_df = spark.read \
+    .option("header", "true") \
+    .option("inferSchema", "true") \
+    .csv("reviews_37k_eng.csv")
 
-    expanded_data = []
-    brands = original_df['brand'].unique().tolist()
+spark_df = spark_df.filter(
+    expr("try_cast(review_ts as date) IS NOT NULL OR review_ts IS NULL")
+)
 
-    for iteration in range(replication_factor):
-        for idx, row in original_df.iterrows():
-            new_row = row.copy()
 
-            # Add temporal variation
-            base_date = pd.to_datetime(row['review_ts'])
-            if pd.isna(base_date):
-                # Assign a default valid date if original review_ts is invalid
-                base_date = pd.to_datetime(datetime.now().date()) - timedelta(days=random.randint(0, 365))
-            days_offset = random.randint(-730, 0)  # Last 2 years
-            new_row['review_ts'] = (base_date + timedelta(days=days_offset)).strftime('%Y-%m-%d')
+base_count = spark_df.count()
+target_rows = 10_000_000
+multiplier = (target_rows // base_count) + 1
 
-            # Generate new unique review_id
-            new_row['review_id'] = f"rev-{iteration:04d}-{idx:06d}-{random.randint(1000,9999)}"
+print(f"✓ Loaded {base_count:,} original reviews")
+print(f"✓ Expanding to {target_rows:,} records using Spark")
 
-            # Add some variation to stars (±1 with 20% probability)
-            if random.random() < 0.2 and not pd.isna(row['stars']):
-                variation = random.choice([-1, 1])
-                # Use built-in max and min for scalar operations
-                new_row['stars'] = __builtins__.max(1, __builtins__.min(5, int(row['stars']) + variation))
+# Generate multiplier DataFrame
+replication_df = spark.range(multiplier)
 
-            expanded_data.append(new_row)
+expanded_df = (
+    spark_df
+    .crossJoin(replication_df)
+    .withColumn(
+        "review_id",
+        concat_ws(
+            "-",
+            lit("rev"),
+            col("id"),
+            monotonically_increasing_id()
+        )
+    )
+    .withColumn(
+        "review_ts_clean",
+        to_date(col("review_ts"))
+    )
+    .withColumn(
+        "review_ts",
+        date_add(
+            coalesce(col("review_ts_clean"), current_date()),
+            - (rand() * 730).cast("int")
+        )
+    )
+    .withColumn(
+        "stars",
+        when(
+            rand() < 0.2,
+            greatest(
+                lit(1),
+                least(
+                    lit(5),
+                    col("stars") + when(rand() < 0.5, -1).otherwise(1)
+                )
+            )
+        ).otherwise(col("stars"))
+    )
+    .drop("review_ts_clean", "id")
+    .limit(target_rows)
+)
 
-            if len(expanded_data) >= target_rows:
-                break
+print("✓ Dataset expanded")
 
-        if len(expanded_data) >= target_rows:
-            break
 
-        if iteration % 50 == 0:
-            print(f"  Progress: {len(expanded_data):,} / {target_rows:,} records")
+# NULL SANITIZATION (FIX BLANKS BEFORE TEXT GENERATION)
 
-    expanded_df = pd.DataFrame(expanded_data[:target_rows])
-    print(f"✓ Dataset expanded to {len(expanded_df):,} records")
+expanded_df = expanded_df \
+    .withColumn(
+        "stars",
+        when(col("stars").isNull(), lit(3)).otherwise(col("stars"))
+    ) \
+    .withColumn(
+        "review_type",
+        when(col("review_type").isNull(), lit("product")).otherwise(col("review_type"))
+    )
 
-    return expanded_df
+# INTELLIGENT TEXT FILLING
+expanded_df = expanded_df \
+    .withColumn(
+        "review_text_eng",
+        when(col("review_text_eng").isNull() | (col("review_text_eng") == ""),
+            when(col("stars") >= 4, lit("Excellent product, very satisfied."))
+            .when(col("stars") == 3, lit("Average product, acceptable quality."))
+            .otherwise(lit("Disappointed with product quality."))
+        ).otherwise(col("review_text_eng"))
+    ) \
+    .withColumn(
+        "review_title_eng",
+        when(col("review_title_eng").isNull() | (col("review_title_eng") == ""),
+            when(col("stars") >= 4, lit("Great purchase"))
+            .when(col("stars") == 3, lit("Okay"))
+            .otherwise(lit("Not recommended"))
+        ).otherwise(col("review_title_eng"))
+    )
 
-def fill_missing_text_intelligent(df):
-    """
-    Intelligently fill missing review text based on stars rating
-    """
-    print("\n=== Filling missing review text ===")
+# INTELLIGENT TEXT FILLING (SPARK)
 
-    # Templates based on star ratings
-    templates = {
-        5: [
-            "Excellent product! Highly recommend.",
-            "Outstanding quality and service.",
-            "Perfect! Exceeded expectations.",
-            "Amazing product, will buy again!",
-            "Best purchase ever, very satisfied."
-        ],
-        4: [
-            "Good quality, happy with purchase.",
-            "Nice product, meets expectations.",
-            "Satisfied with the product quality.",
-            "Good value, would recommend.",
-            "Pretty good overall experience."
-        ],
-        3: [
-            "It's okay, nothing special.",
-            "Average product, decent quality.",
-            "Meets basic expectations.",
-            "Not bad, but could be better.",
-            "Acceptable quality for the price."
-        ],
-        2: [
-            "Disappointed with quality.",
-            "Not what I expected.",
-            "Below average, had issues.",
-            "Product quality could be better.",
-            "Not satisfied with purchase."
-        ],
-        1: [
-            "Very poor quality, not recommended.",
-            "Terrible experience, waste of money.",
-            "Completely disappointed.",
-            "Do not buy this product.",
-            "Worst purchase, very unhappy."
-        ]
-    }
+expanded_df = expanded_df \
+    .withColumn(
+        "stars",
+        when(col("stars").isNull(), lit(3)).otherwise(col("stars"))
+    ) \
+    .withColumn(
+        "review_type",
+        when(col("review_type").isNull(), lit("product"))
+        .otherwise(col("review_type"))
+    ) \
+    .withColumn(
+        "review_text_eng",
+        when(col("review_text_eng").isNull() | (col("review_text_eng") == ""),
+            when(col("stars") >= 4, lit("Excellent product, very satisfied."))
+            .when(col("stars") == 3, lit("Average product, acceptable quality."))
+            .otherwise(lit("Disappointed with product quality."))
+        ).otherwise(col("review_text_eng"))
+    ) \
+    .withColumn(
+        "review_title_eng",
+        when(col("review_title_eng").isNull() | (col("review_title_eng") == ""),
+            when(col("stars") >= 4, lit("Great purchase"))
+            .when(col("stars") == 3, lit("Okay"))
+            .otherwise(lit("Not recommended"))
+        ).otherwise(col("review_title_eng"))
+    )
 
-    filled_count = 0
-    for idx, row in df.iterrows():
-        if pd.isna(row['review_text_eng']) or row['review_text_eng'] == '':
-            stars = int(row['stars']) if not pd.isna(row['stars']) else 3
-            df.at[idx, 'review_text_eng'] = random.choice(templates[stars])
-            filled_count += 1
 
-        if pd.isna(row['review_title_eng']) or row['review_title_eng'] == '':
-            stars = int(row['stars']) if not pd.isna(row['stars']) else 3
-            if stars >= 4:
-                df.at[idx, 'review_title_eng'] = random.choice(["Great!", "Excellent", "Love it", "Recommended"])
-            elif stars == 3:
-                df.at[idx, 'review_title_eng'] = random.choice(["Okay", "Average", "Decent", "Fair"])
-            else:
-                df.at[idx, 'review_title_eng'] = random.choice(["Disappointed", "Not good", "Poor", "Bad"])
-            filled_count += 1
+# Repartition + cache
+expanded_df = expanded_df.repartition(200).cache()
+expanded_df.count()
 
-    print(f"✓ Filled {filled_count:,} missing text fields")
-    return df
+print(f"✓ Final record count: {expanded_df.count():,}")
+print(f"✓ Partitions: {expanded_df.rdd.getNumPartitions()}")
+print("\n✓ Phase 1 Complete: Data Ingestion & Expansion")
+print("=" * 80)
 
-# Load original data
-print("\n=== Loading original reviews.csv ===")
-original_df = pd.read_csv('reviews_37k_eng.csv')
-print(f"✓ Loaded {len(original_df):,} original reviews")
-print(f"  Columns: {list(original_df.columns)}")
-
-# Expand to 10M+ records
-expanded_df = expand_dataset_to_millions(original_df, target_rows=10_000_000)
-
-# Fill missing values
-expanded_df = fill_missing_text_intelligent(expanded_df)
-
-# Save expanded dataset
-expanded_df.to_csv('reviews_expanded_10M.csv', index=False)
-print(f"\n✓ Saved expanded dataset: reviews_expanded_10M.csv ({len(expanded_df):,} records)")
-
-# Load into Spark
-print("\n=== Loading data into Spark DataFrame ===")
-spark_df = spark.createDataFrame(expanded_df)
 
 # Cache for performance
 spark_df.cache()
@@ -187,12 +189,34 @@ spark_df.show(5, truncate=50)
 # Data profiling
 print("\n=== Data Profiling ===")
 spark_df.printSchema()
-print("\nSummary Statistics:")
+print("\nSummary Statistics (raw):")
 spark_df.select('stars').summary().show()
 
-print("\nNull value counts:")
+print("\nNull value counts (raw):")
 null_counts = spark_df.select([count(when(col(c).isNull(), c)).alias(c) for c in spark_df.columns])
 null_counts.show()
+
+# Data profiling
+print("\n=== Data Profiling ===")
+expanded_df.printSchema()
+print("\nSummary Statistics (extanded data):")
+expanded_df.select('stars').summary().show()
+
+print("\nNull value counts (extanded data):")
+null_counts = expanded_df.select([count(when(col(c).isNull(), c)).alias(c) for c in expanded_df.columns])
+null_counts.show()
+
+
+(
+    expanded_df
+    .repartition(20)
+    .write
+    .mode("overwrite")
+    .option("header", "true")
+    .csv("reviews_expanded_10M_20parts")
+)
+
+
 
 print("\n✓ Phase 1 Complete: Data Ingestion & Expansion")
 print("=" * 80)
