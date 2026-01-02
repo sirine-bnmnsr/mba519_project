@@ -37,7 +37,7 @@ ml_df = label_indexer.fit(ml_df).transform(ml_df)
 train_df, val_df, test_df = ml_df.randomSplit([0.7, 0.15, 0.15], seed=42)
 
 print(f"\nData splits:")
-print(f"  Training:   {train_df.count():,} ({train_df.count()/ml_df.count()*100:.1f}%)자에 {val_df.count()/ml_df.count()*100:.1f}%) ")
+print(f"  Training:   {train_df.count():,} ({train_df.count()/ml_df.count()*100:.1f}%) {val_df.count()/ml_df.count()*100:.1f}%) ")
 print(f"  Validation: {val_df.count():,} ({val_df.count()/ml_df.count()*100:.1f}%) ")
 print(f"  Test:       {test_df.count():,} ({test_df.count()/ml_df.count()*100:.1f}%)")
 
