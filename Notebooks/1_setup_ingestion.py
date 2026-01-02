@@ -18,6 +18,14 @@ from pyspark.ml.tuning import CrossValidator, ParamGridBuilder
 from pyspark.ml import Pipeline
 from pyspark.sql.functions import expr
 
+# BigQuery imports
+# Install required libraries (run once)
+!pip install google-cloud-bigquery pandas db-dtypes
+# Import libraries
+from google.cloud import bigquery
+from google.colab import auth
+import pandas as pd
+
 print("=== Sentiment Analysis at Scale: Customer Feedback Pipeline ===")
 print("Initializing Spark Session with optimized configuration...")
 
@@ -220,3 +228,37 @@ null_counts.show()
 
 print("\n✓ Phase 1 Complete: Data Ingestion & Expansion")
 print("=" * 80)
+
+
+#================ SAVING TO BIGQUERY =========================
+
+# Authenticate with Google Cloud
+auth.authenticate_user()
+
+# Initialize BigQuery client
+project_id = 'sentiment-analysis-a'  # Replace with your GCP project ID
+client = bigquery.Client(project=project_id)
+
+# Define BigQuery dataset and table
+dataset_id = 'outputs'  # Replace with your dataset name
+table_id = 'spark_df'      # Replace with your table name
+full_table_id = f'{project_id}.{dataset_id}.{table_id}'
+
+# Configure the load job
+job_config = bigquery.LoadJobConfig(
+    write_disposition='WRITE_TRUNCATE',  # Options: WRITE_TRUNCATE, WRITE_APPEND, WRITE_EMPTY
+    autodetect=True,  # Auto-detect schema
+)
+
+# Convert PySpark DataFrame to Pandas DataFrame
+pandas_df = spark_df.toPandas()
+
+# Load DataFrame to BigQuery
+job = client.load_table_from_dataframe(pandas_df, full_table_id, job_config=job_config)
+job.result()  # Wait for the job to complete
+
+print(f'Successfully loaded {job.output_rows} rows to {full_table_id}')
+
+
+
+
