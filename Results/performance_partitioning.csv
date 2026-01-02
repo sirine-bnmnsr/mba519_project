@@ -1,0 +1,6 @@
+Configuration,Partitions,Execution_Time,Records_Processed
+No Repartition,50,0.5942769050598145,2340
+10 Partitions,10,0.4260125160217285,2340
+50 Partitions,50,0.9248955249786377,2340
+100 Partitions,100,3.1349165439605713,2340
+200 Partitions,200,3.153205156326294,2340
