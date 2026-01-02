@@ -20,15 +20,6 @@ print("=== PHASE 2: REAL-TIME STREAMING INGESTION ===")
 print("=" * 80)
 
 # =============================================================================
-# ASSUMPTIONS
-# =============================================================================
-# - `spark` SparkSession already exists
-# - `expanded_df` is an existing Spark DataFrame (batch dataset)
-# - `spark_df` is the cleaned batch Spark DataFrame used in Phase 1
-# =============================================================================
-
-
-# =============================================================================
 # STREAMING SCHEMA
 # =============================================================================
 streaming_schema = StructType([
