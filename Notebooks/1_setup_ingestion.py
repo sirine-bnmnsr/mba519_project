@@ -17,6 +17,7 @@ from pyspark.ml.evaluation import MulticlassClassificationEvaluator, BinaryClass
 from pyspark.ml.tuning import CrossValidator, ParamGridBuilder
 from pyspark.ml import Pipeline
 from pyspark.sql.functions import expr
+from pyspark.sql.functions import col
 
 # BigQuery imports
 # Install required libraries
