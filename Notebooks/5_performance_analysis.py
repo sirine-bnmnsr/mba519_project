@@ -291,5 +291,35 @@ print("✓ Saved performance_caching.csv")
 print("✓ Saved performance_strategies.csv")
 print("✓ Saved performance_scalability.csv")
 
+
+
+pandas_to_bq(
+    benchmark_df,
+    "phase5_partition_benchmark",
+    if_exists="replace"
+)
+
+
+pandas_to_bq(
+    pd.DataFrame(cache_results),
+    "phase5_caching_benchmark",
+    if_exists="replace"
+)
+
+
+pandas_to_bq(
+    strategy_results,
+    "phase5_processing_strategies",
+    if_exists="replace"
+)
+
+
+pandas_to_bq(
+    scalability_df,
+    "phase5_scalability",
+    if_exists="replace"
+)
+
+
 print("\n✓ Phase 6 Complete: Performance Optimization & Benchmarking")
 print("="*80)
