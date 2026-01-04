@@ -250,4 +250,4 @@ print(f"  Batch data: {spark_df.count():,}")
 print(f"  Streaming data: {streaming_count:,}")
 
 print("\n✓ Phase 2 Complete: Streaming Integration")
-print("=" * 80)"""
+print("=" * 80)
