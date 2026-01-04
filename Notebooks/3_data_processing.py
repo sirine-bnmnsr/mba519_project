@@ -108,26 +108,32 @@ print(f"  Total features: {len(cleaned_df.columns)}")
 # Show sample with new features
 print("\n=== Sample Processed Data ===")
 cleaned_df.select(
-    'brand', 'stars', 'sentiment_label', 'text_length', 
+    'brand', 'stars', 'sentiment_label', 'text_length',
     'word_count', 'review_month', 'brand_index'
 ).show(10)
 
-# ============================================================================
-# EXPLORATORY DATA ANALYSIS
-# ============================================================================
+# =============================================================================
+# EXPLORATORY DATA ANALYSIS (WITH CSV OUTPUTS)
+# =============================================================================
 
 print("\n=== Exploratory Data Analysis ===")
 
+# ---------------------------------------------------------------------------
 # 1. Sentiment distribution
-print("\n1. Sentiment Distribution:")
+# ---------------------------------------------------------------------------
 sentiment_dist = cleaned_df.groupBy('sentiment_label') \
     .agg(count('*').alias('count')) \
-    .withColumn('percentage', (col('count') / cleaned_df.count() * 100)) \
+    .withColumn('percentage', col('count') / cleaned_df.count() * 100) \
     .orderBy('sentiment_label')
-sentiment_dist.show()
 
-# 2. Brand distribution
-print("\n2. Top 10 Brands by Review Count:")
+sentiment_dist.coalesce(1).write.mode("overwrite").csv(
+    "phase3_sentiment_distribution.csv",
+    header=True
+)
+
+# ---------------------------------------------------------------------------
+# 2. Top brands
+# ---------------------------------------------------------------------------
 brand_dist = cleaned_df.groupBy('brand') \
     .agg(
         count('*').alias('review_count'),
@@ -135,54 +141,106 @@ brand_dist = cleaned_df.groupBy('brand') \
     ) \
     .orderBy(desc('review_count')) \
     .limit(10)
-brand_dist.show()
 
-# 3. Temporal trends
-print("\n3. Reviews by Month:")
+brand_dist.coalesce(1).write.mode("overwrite").csv(
+    "phase3_brand_distribution_top10.csv",
+    header=True
+)
+
+# ---------------------------------------------------------------------------
+# 3. Monthly trends
+# ---------------------------------------------------------------------------
 monthly_dist = cleaned_df.groupBy('review_year', 'review_month') \
     .agg(
         count('*').alias('count'),
         avg('stars').alias('avg_stars')
     ) \
     .orderBy('review_year', 'review_month')
-monthly_dist.show(12)
 
+monthly_dist.coalesce(1).write.mode("overwrite").csv(
+    "phase3_monthly_trends.csv",
+    header=True
+)
+
+# ---------------------------------------------------------------------------
 # 4. Text statistics
-print("\n4. Text Length Statistics:")
-cleaned_df.select('text_length', 'word_count').summary().show()
+# ---------------------------------------------------------------------------
+text_stats = cleaned_df.select(
+    'text_length', 'word_count'
+).summary()
 
-# 5. Star rating distribution
-print("\n5. Star Rating Distribution:")
+text_stats.coalesce(1).write.mode("overwrite").csv(
+    "phase3_text_statistics.csv",
+    header=True
+)
+
+# ---------------------------------------------------------------------------
+# 5. Star distribution
+# ---------------------------------------------------------------------------
 stars_dist = cleaned_df.groupBy('stars') \
     .agg(count('*').alias('count')) \
-    .withColumn('percentage', (col('count') / cleaned_df.count() * 100)) \
+    .withColumn('percentage', col('count') / cleaned_df.count() * 100) \
     .orderBy('stars')
-stars_dist.show()
 
-# ============================================================================
+stars_dist.coalesce(1).write.mode("overwrite").csv(
+    "phase3_star_distribution.csv",
+    header=True
+)
+
+# =============================================================================
 # PARTITIONING STRATEGY
-# ============================================================================
+# =============================================================================
 
 print("\n=== Implementing Partitioning Strategy ===")
 
-# Repartition by sentiment for balanced processing
-print("\nRepartitioning by sentiment label...")
 partitioned_df = cleaned_df.repartition(50, 'sentiment_label')
-print(f"  New partition count: {partitioned_df.rdd.getNumPartitions()}")
-
-# Test partition distribution
-partition_dist = partitioned_df.groupBy('sentiment_label') \
-    .agg(count('*').alias('count')) \
-    .orderBy('sentiment_label')
-print("\nRecords per sentiment:")
-partition_dist.show()
-
-# Cache partitioned data
 partitioned_df.cache()
-partitioned_df.count()  # Materialize cache
+partitioned_df.count()
+
+partitioned_df.coalesce(1).write.mode("overwrite").csv(
+    "phase3_partitioned_data.csv",
+    header=True
+)
 
 print("\n✓ Phase 3 Complete: Data Processing & Feature Engineering")
-print("="*80)
+print("=" * 80)
 
-# Store processed data reference
+# Final reference
 processed_df = partitioned_df
+
+
+spark_df_to_bq(
+    processed_df,
+    "phase3_reviews_processed",
+    write_mode="replace"
+)
+
+spark_df_to_bq(
+    sentiment_dist,
+    "phase3_sentiment_distribution",
+    write_mode="replace"
+)
+
+spark_df_to_bq(
+    brand_dist,
+    "phase3_brand_distribution",
+    write_mode="replace"
+)
+
+spark_df_to_bq(
+    monthly_dist,
+    "phase3_monthly_trends",
+    write_mode="replace"
+)
+
+spark_df_to_bq(
+    text_stats,
+    "phase3_text_statistics",
+    write_mode="replace"
+)
+
+spark_df_to_bq(
+    stars_dist,
+    "phase3_star_distribution",
+    write_mode="replace"
+)
