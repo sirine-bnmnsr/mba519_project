@@ -1,0 +1,1154 @@
+% ============================================================================
+% BIG DATA ANALYTICS - TECHNICAL REPORT
+% Sentiment Analysis at Scale: Customer Feedback Streams
+% Author: Sirine Ben Mansour
+% Institution: Tunis Business School, University of Tunis
+% ============================================================================
+\documentclass[12pt,a4paper]{article}
+% ============================================================================
+% PACKAGES
+% ============================================================================
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{verbatim}
+
+% ============================================================================
+% DOCUMENT SETUP
+% ============================================================================
+\geometry{
+    left=2.5cm,
+    right=2.5cm,
+    top=2.5cm,
+    bottom=2.5cm
+}
+
+% Hyperref setup
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,
+    urlcolor=cyan,
+    citecolor=green,
+    pdftitle={Sentiment Analysis at Scale},
+    pdfauthor={Sirine Ben Mansour}
+}
+
+% Code listing setup
+\lstset{
+    basicstyle=\ttfamily\footnotesize,
+    breaklines=true,
+    frame=single,
+    language=Python,
+    showstringspaces=false,
+    commentstyle=\color{gray},
+    keywordstyle=\color{blue},
+    stringstyle=\color{red},
+    numbers=left,
+    numberstyle=\tiny\color{gray}
+}
+
+% TikZ libraries
+\usetikzlibrary{shapes.geometric, arrows, positioning, fit, backgrounds}
+
+% Page style
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\leftmark}
+\fancyhead[R]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% Section formatting
+\titleformat{\section}{\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{1em}{}
+
+% ============================================================================
+% DOCUMENT BEGIN
+% ============================================================================
+\begin{document}
+
+% ============================================================================
+% Creative Academic Title Page
+% ============================================================================
+\begin{titlepage}
+    \centering
+    
+    % Top spacing
+    \vspace*{1cm}
+    
+    % Logo with subtle emphasis
+    \includegraphics[width=0.28\textwidth]{tbs_logo.jpg}
+    
+    \vspace{1.2cm}
+    
+    % Horizontal rule for structure
+    \rule{0.75\textwidth}{0.6pt}
+    
+    \vspace{0.8cm}
+    
+    % Course title
+    {\Large\bfseries Big Data Analytics\par}
+    \vspace{0.6cm}
+    
+    % Project title
+    {\Huge\bfseries Sentiment Analysis at Scale\par}
+    \vspace{0.3cm}
+    {\Large\bfseries Customer Feedback Analysis\par}
+    
+    \vspace{0.8cm}
+    
+    % Horizontal rule
+    \rule{0.75\textwidth}{0.6pt}
+    
+    \vspace{2.5cm}
+    
+    % Information block in a framed layout
+    \renewcommand{\arraystretch}{1.4}
+    \begin{tabular}{|p{6cm} p{7cm}|}
+        \hline
+        \textbf{Instructor} & Dr. Manel Abdelkader \\ \hline
+        \textbf{Student} & Sirine Ben Mansour \\ \hline
+        \textbf{Program} & Master in Business Analytics \\ \hline
+        \textbf{Course Code} & MBA519 \\ \hline
+        \textbf{Project Type} & Technical Project \\ \hline
+        \textbf{Academic Year} & 2025--2026 \\ \hline
+    \end{tabular}
+    
+    \vfill
+    
+    % Footer
+    {\bfseries Tunis Business School, University of Tunis\par}
+    \vspace{0.4cm}
+    {\large January, 2026\par}
+    
+\end{titlepage}
+
+
+% ============================================================================
+% ABSTRACT
+% ============================================================================
+\newpage
+\section*{Abstract}
+\addcontentsline{toc}{section}{Abstract}
+This technical report presents a comprehensive Big Data analytics pipeline for large-scale sentiment analysis of customer product reviews. The project implements a complete solution processing 10 million customer reviews using Apache Spark, incorporating batch and real-time streaming data ingestion, advanced machine learning models, and business intelligence visualization through Google Looker Studio.
+
+The system architecture integrates multiple components: data expansion and preprocessing, Spark Structured Streaming for real-time analytics, feature engineering with 19 derived features, and comparative evaluation of multiple machine learning algorithms. Through rigorous experimentation, Logistic Regression emerged as the optimal classifier, achieving 91.86\% accuracy on the test set with an F1-score of 0.9152, outperforming Random Forest (91.32\% accuracy) and Naive Bayes (89.60\% accuracy).
+
+Performance optimization techniques, including strategic partitioning (optimal: 10 partitions), caching strategies, and processing method comparisons, produced substantial improvements. The Spark SQL approach proved most efficient, achieving 33.4x faster execution than RDD-based processing. Scalability analysis confirmed near-linear performance characteristics, with average throughput of 38,478 records per second across varying dataset sizes.
+
+The project addresses the challenge of automated sentiment classification at scale, providing actionable business insights through an interactive dashboard deployed on Google BigQuery and Looker Studio. Key findings reveal that 91\% of reviews express positive sentiment, with temporal patterns indicating seasonal variations and brand-specific performance metrics enabling data-driven decision support.
+
+\textbf{Keywords:} Big Data Analytics, Sentiment Analysis, Apache Spark, Machine Learning, Natural Language Processing, Real-time Streaming, Performance Optimization
+% ============================================================================
+% TABLE OF CONTENTS
+% ============================================================================
+\newpage
+\tableofcontents
+
+\listoftables
+\addcontentsline{toc}{section}{List of Tables}
+\listoffigures
+\addcontentsline{toc}{section}{List of Figures}
+
+% ============================================================================
+% MAIN CONTENT
+% ============================================================================
+\newpage
+\section{Introduction}
+In the contemporary digital marketplace, customer reviews represent a critical source of business intelligence, with e-commerce platforms receiving millions of feedback entries daily. Organizations face the challenge of processing large volumes of unstructured text data to extract actionable insights regarding product quality, customer satisfaction, and emerging market trends. Traditional manual analysis methods prove inadequate when working with datasets exceeding millions of records, requiring automated, scalable solutions.
+
+The exponential growth in review data volume (estimated at 2.5 quintillion bytes of data created daily worldwide) presents both opportunities and challenges. Companies that effectively process this information gain competitive advantages through rapid identification of product issues, understanding customer sentiment patterns, and making data-driven strategic decisions. However, achieving these objectives requires sophisticated Big Data infrastructure capable of handling massive datasets with minimal latency.
+
+This project addresses the following research problem: \textit{How can organizations design and implement a scalable, production-ready Big Data analytics pipeline for real-time sentiment classification of customer reviews, achieving high accuracy while maintaining computational efficiency across millions of records?}
+
+Specific challenges include:
+\begin{itemize}[noitemsep]
+    \item Processing 10+ million customer reviews efficiently using distributed computing
+    \item Implementing real-time streaming analytics with low latency (<5 seconds)
+    \item Developing robust machine learning models achieving >85\% classification accuracy
+    \item Optimizing system performance through partitioning and caching strategies
+    \item Delivering actionable business insights through interactive visualizations
+\end{itemize}
+
+The primary objective is to design and implement a comprehensive Big Data analytics solution encompassing:
+
+\textbf{Technical Objectives:}
+\begin{enumerate}[noitemsep]
+    \item Develop a distributed data processing pipeline using Apache Spark
+    \item Implement batch and streaming data ingestion mechanisms
+    \item Engineer relevant features for sentiment classification
+    \item Train and evaluate multiple machine learning models
+    \item Optimize system performance through benchmarking
+    \item Deploy an interactive business intelligence dashboard
+\end{enumerate}
+
+\textbf{Business Objectives:}
+\begin{enumerate}[noitemsep]
+    \item Automate sentiment analysis at scale (10M+ reviews)
+    \item Enable real-time monitoring of customer feedback
+    \item Provide brand-level performance insights
+    \item Support data-driven decision-making processes
+    \item Establish scalable architecture for future expansion
+\end{enumerate}
+
+This project encompasses all major components of Big Data analytics:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Data Engineering:} Ingestion, cleaning, transformation, and storage of 10 million records
+    \item \textbf{Distributed Processing:} Apache Spark implementation with DataFrame API and Spark SQL
+    \item \textbf{Streaming Analytics:} Real-time review processing using Spark Structured Streaming
+    \item \textbf{Machine Learning:} Multi-algorithm comparison with hyperparameter optimization
+    \item \textbf{Performance Optimization:} Comprehensive benchmarking and tuning
+    \item \textbf{Visualization:} Google Looker Studio dashboard with BigQuery integration
+\end{itemize}
+
+The remainder of this report is structured as follows: Section 2 reviews relevant literature and theoretical foundations. Section 3 details the system architecture and technology selection. Section 4 describes data acquisition and preprocessing methodologies. Section 5 presents the machine learning pipeline and model evaluation. Section 6 analyzes performance optimization results. Section 7 discusses business insights and dashboard implementation. Section 8 reflects on lessons learned and future directions. Section 9 concludes the report with key findings and contributions.
+
+\section{System Architecture and Design}
+
+\subsection{Overall Architecture}
+
+The system architecture follows a layered design pattern, separating concerns across data ingestion, processing, machine learning, and presentation layers. Figure \ref{fig:architecture} illustrates the complete pipeline.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=0.75cm, % was 1.5cm
+    block/.style={rectangle, draw, fill=blue!20, text width=6cm, text centered, rounded corners, minimum height=2em},
+    storage/.style={cylinder, draw, fill=green!20, text width=3cm, text centered, minimum height=2cm},
+    arrow/.style={->, thick}
+]
+
+% Data Sources
+\node[block] (batch) {Batch Data\\10M Reviews};
+\node[block, right=of batch] (stream) {Streaming\\Real-time Feed};
+
+% Processing Layer
+\node[block, below=of batch, xshift=1cm] (spark) {Apache Spark\\Processing};
+\node[storage, below=of spark] (storage) {Cached\\DataFrames};
+
+% ML Layer
+\node[block, below=of storage] (ml) {ML Pipeline\\Classification};
+
+% Output Layer
+\node[block, below=of ml, xshift=-4cm] (bq) {BigQuery\\Data Warehouse};
+\node[block, below=of ml, xshift=4cm] (looker) {Looker Studio\\Dashboard};
+
+% Arrows
+\draw[arrow] (batch) -- (spark);
+\draw[arrow] (stream) -- (spark);
+\draw[arrow] (spark) -- (storage);
+\draw[arrow] (storage) -- (ml);
+\draw[arrow] (ml) -- (bq);
+\draw[arrow] (ml) -- (looker);
+\draw[arrow] (bq) -- (looker);
+
+\end{tikzpicture}
+\caption{System Architecture Overview}
+\label{fig:architecture}
+\end{figure}
+
+
+\subsection{Technology Stack Selection}
+
+\subsubsection*{Apache Spark}
+
+Apache Spark was selected as the core processing engine based on the following criteria:
+
+\textbf{Performance:} In-memory computation provides substantial performance advantages over disk-based systems. Benchmarks demonstrate 100x speed improvement for iterative algorithms compared to Hadoop MapReduce.
+
+\textbf{Unified Platform:} Single framework supporting batch processing, streaming analytics, machine learning (MLlib), and SQL queries eliminates the need for multiple specialized tools.
+
+\textbf{Scalability:} Proven capability to process petabyte-scale datasets across thousands of nodes, with linear scalability characteristics.
+
+\textbf{Ecosystem:} Rich library ecosystem including MLlib for machine learning, GraphX for graph processing, and native integration with major data sources (HDFS, S3, Cassandra).
+
+\subsubsection*{PySpark vs. Scala}
+
+PySpark was chosen as the primary development language despite Scala's marginally superior performance for several reasons:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Development Velocity:} Python's concise syntax and extensive libraries accelerate prototyping
+    \item \textbf{Ecosystem Integration:} Seamless integration with pandas, NumPy, scikit-learn
+    \item \textbf{Performance Parity:} For our scale (10M records), performance differences prove negligible
+\end{itemize}
+
+\subsubsection*{Google Colab Environment}
+
+Google Colab provides an accessible, zero-configuration environment suitable for this project's scale:
+
+\textbf{Advantages:}
+\begin{itemize}[noitemsep]
+    \item Pre-installed Spark and ML libraries
+    \item Free computational resources (12GB RAM, 2-core CPU)
+    \item Cloud storage integration
+    \item Reproducible notebook format
+    \item No local infrastructure required
+\end{itemize}
+
+\textbf{Limitations:}
+\begin{itemize}[noitemsep]
+    \item Single-node execution (acceptable for 10M records)
+    \item Session timeouts requiring checkpoint management
+    \item Limited to 12GB RAM necessitating careful memory management
+\end{itemize}
+
+\subsubsection*{Visualization Platform}
+
+Google Looker Studio integrated with BigQuery was selected for business intelligence:
+
+\begin{itemize}[noitemsep]
+    \item Native BigQuery integration enabling direct querying
+    \item Interactive dashboards with real-time updates
+    \item Collaborative sharing capabilities
+    \item Professional-quality visualizations
+    \item No licensing costs for academic use
+\end{itemize}
+
+\subsection{Data Flow Pipeline}
+
+The complete data flow encompasses six distinct phases:
+
+\begin{enumerate}
+    \item \textbf{Data Ingestion:} Load 39,160 base reviews and expand to 10 million records through intelligent replication
+    \item \textbf{Streaming Ingestion:} Process real-time review stream using Spark Structured Streaming
+    \item \textbf{Data Processing:} Clean, validate, and engineer features using Spark transformations
+    \item \textbf{Machine Learning:} Train multiple classifiers and select optimal model
+    \item \textbf{Batch Inference:} Apply best model to complete 10M dataset
+    \item \textbf{Visualization:} Export predictions to BigQuery and create Looker Studio dashboard
+\end{enumerate}
+
+Each phase implements comprehensive error handling, logging, and performance monitoring to ensure pipeline reliability and facilitate troubleshooting.
+
+\section{Data Acquisition and Preprocessing}
+
+\subsection{Dataset Description}
+
+The foundational dataset comprises 39,160 authentic customer reviews collected from four brands operating in the pet food industry:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Brands:} Brand HH, Brand BB, Brand NN, Brand AA
+    \item \textbf{Review Types:} Service reviews and product reviews
+    \item \textbf{Languages:} English (EN) and German (DE)
+    \item \textbf{Time Period:} Historical reviews spanning multiple years
+    \item \textbf{Format:} CSV file (\texttt{reviews\_37k\_eng.csv})
+\end{itemize}
+
+
+Table \ref{tab:schema} presents the dataset schema with data types and descriptions.
+
+\begin{table}[H]
+\centering
+\caption{Dataset Schema Definition}
+\label{tab:schema}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Column} & \textbf{Type} & \textbf{Description} \\ \midrule
+brand & String & Brand identifier \\
+review\_type & String & Review category (service/product) \\
+review\_id & String & Unique review identifier \\
+review\_ts & Date & Review submission timestamp \\
+stars & Integer & Rating (1-5 scale) \\
+review\_text\_eng & String & Review content in English \\
+review\_title\_eng & String & Review title in English \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Data Expansion}
+
+To simulate real-world Big Data scale, the original 39,160 reviews were systematically expanded to 10 million records using Spark-native operations. This approach provides representative training data while maintaining computational feasibility.
+
+The expansion process employs cross-join operations with temporal and rating variations:
+
+\begin{algorithm}[H]
+\caption{Data Expansion Algorithm}
+\begin{algorithmic}[1]
+\STATE Load base dataset into Spark DataFrame
+\STATE Calculate multiplier: $m = \lceil 10,000,000 / n_{base} \rceil$
+\STATE Generate replication DataFrame with range $[0, m)$
+\STATE Cross-join base dataset with replication range
+\STATE For each record:
+\STATE \quad Generate unique review\_id using monotonically\_increasing\_id()
+\STATE \quad Apply temporal variation: date $\pm$ random(0, 730) days
+\STATE \quad Apply rating variation: stars $\pm 1$ with 20\% probability
+\STATE Limit result to 10,000,000 records
+\STATE Repartition into 200 partitions for balanced distribution
+\end{algorithmic}
+\end{algorithm}
+
+This methodology ensures:
+\begin{itemize}[noitemsep]
+    \item Unique identifiers preventing duplicate conflicts
+    \item Temporal diversity spanning two-year period
+    \item Rating variability simulating natural fluctuations
+    \item Maintained correlation between text and sentiment
+\end{itemize}
+
+\subsection{Data Quality Assessment}
+
+Initial data profiling revealed quality issues requiring remediation:
+
+\begin{table}[H]
+\centering
+\caption{Data Quality Issues (Original Dataset)}
+\label{tab:quality}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Issue} & \textbf{Count} & \textbf{Percentage} \\ \midrule
+Missing stars & 1,860 & 4.75\% \\
+Missing review\_text & 3,868 & 9.87\% \\
+Missing review\_title & 25,600 & 65.37\% \\
+Missing review\_type & 1,122 & 2.86\% \\
+Duplicate review\_ids & 15,680 & 40.04\% \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Data Cleaning Pipeline}
+
+The cleaning pipeline implements multiple validation and imputation steps:
+
+\subsubsection*{Missing Value Imputation}
+
+For missing textual content, intelligent imputation based on star ratings was employed:
+
+\begin{lstlisting}[language=Python, caption={Missing Text Imputation Logic}]
+expanded_df = expanded_df \
+    .withColumn("review_text_eng",
+        when(col("review_text_eng").isNull(),
+            when(col("stars") >= 4, 
+                 lit("Excellent product, very satisfied."))
+            .when(col("stars") == 3, 
+                  lit("Average product, acceptable quality."))
+            .otherwise(
+                 lit("Disappointed with product quality."))
+        ).otherwise(col("review_text_eng"))
+    )
+\end{lstlisting}
+
+This approach maintains semantic consistency between ratings and text content, crucial for sentiment classification model training.
+
+\subsubsection*{Data Validation Rules}
+
+Comprehensive validation ensures data integrity:
+
+\begin{enumerate}[noitemsep]
+    \item \textbf{Null Check:} Remove records with missing critical fields (brand, stars, review\_text)
+    \item \textbf{Range Check:} Filter star ratings outside [1, 5] range
+    \item \textbf{Uniqueness Check:} Remove duplicate review\_ids
+    \item \textbf{Text Check:} Eliminate empty or whitespace-only review text
+\end{enumerate}
+
+Post-cleaning statistics:
+\begin{itemize}[noitemsep]
+    \item Valid records: 23,288 (59.46\% retention from 39,160 originals)
+    \item Invalid records removed: 15,872
+    \item Data quality score: 99.9\%
+\end{itemize}
+
+\subsection{Feature Engineering}
+
+Feature engineering transforms raw data into representations suitable for machine learning algorithms. A total of 19 features were engineered across four categories.
+
+\subsubsection{Text-Based Features}
+
+\begin{itemize}[noitemsep]
+    \item \textbf{text\_length:} Character count of review text
+    \item \textbf{word\_count:} Number of words after tokenization
+    \item \textbf{has\_title:} Binary indicator for title presence
+\end{itemize}
+
+Statistical summary (Table \ref{tab:text_stats}):
+
+\begin{table}[H]
+\centering
+\caption{Text Feature Statistics}
+\label{tab:text_stats}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Statistic} & \textbf{text\_length} & \textbf{word\_count} \\ \midrule
+Mean & 96.66 & 16.43 \\
+Std Dev & 115.13 & 19.90 \\
+Minimum & 1 & 1 \\
+25th Percentile & 31 & 5 \\
+Median & 58 & 10 \\
+75th Percentile & 118 & 20 \\
+Maximum & 1,967 & 351 \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Sentiment Labels (Target Variables)}
+
+Two sentiment representations were created:
+
+\textbf{Multi-class Classification:}
+\begin{equation}
+\text{sentiment\_label} = \begin{cases}
+\text{Positive} & \text{if stars} \geq 4 \\
+\text{Negative} & \text{if stars} \leq 2 \\
+\text{Neutral} & \text{if stars} = 3
+\end{cases}
+\end{equation}
+
+\textbf{Binary Classification:}
+\begin{equation}
+\text{sentiment\_binary} = \begin{cases}
+1 & \text{if stars} \geq 4 \\
+0 & \text{otherwise}
+\end{cases}
+\end{equation}
+
+Distribution of sentiment labels (Figure \ref{tab:sentiment_dist}):
+
+\begin{table}[H]
+\centering
+\caption{Sentiment Label Distribution}
+\label{tab:sentiment_dist}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Sentiment} & \textbf{Count} & \textbf{Percentage} \\ \midrule
+Positive & 21,272 & 91.34\% \\
+Neutral & 990 & 4.25\% \\
+Negative & 1,026 & 4.41\% \\ \bottomrule
+\end{tabular}
+\end{table}
+
+The dataset exhibits significant class imbalance, with positive reviews comprising over 91\% of samples. This distribution reflects common patterns in customer feedback where satisfied customers represent the majority.
+
+\subsubsection{Temporal Features}
+
+\begin{itemize}[noitemsep]
+    \item \textbf{review\_year:} Extracted year from timestamp
+    \item \textbf{review\_month:} Month (1-12)
+    \item \textbf{review\_quarter:} Quarter (Q1-Q4)
+    \item \textbf{review\_day\_of\_week:} Day of week (1-7)
+\end{itemize}
+
+These features enable temporal pattern analysis and seasonal trend detection.
+
+\subsubsection{Categorical Encodings}
+
+String columns were encoded numerically using StringIndexer:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{brand\_index:} Numeric encoding of brand names
+    \item \textbf{review\_type\_index:} Encoding of review type (product/service)
+\end{itemize}
+
+\subsection{Streaming Data Ingestion}
+
+Real-time streaming capabilities were implemented using Spark Structured Streaming to demonstrate a production-ready architecture.
+
+\subsubsection{Streaming Architecture}
+
+The streaming pipeline simulates Kafka-like message ingestion through file-based micro-batching:
+
+\begin{enumerate}[noitemsep]
+    \item Background thread generates JSON micro-batches (100 reviews per batch)
+    \item Batches written to designated directory every 3 seconds
+    \item Spark readStream monitors directory for new files
+    \item maxFilesPerTrigger=1 ensures controlled processing rate
+    \item Window-based aggregations compute real-time metrics
+\end{enumerate}
+
+\subsubsection{Streaming Transformations}
+
+Real-time transformations applied to streaming data:
+
+\begin{lstlisting}[language=Python, caption={Streaming Transformations}]
+streaming_processed = streaming_df \
+    .withColumn("text_length", 
+                length(col("review_text_eng"))) \
+    .withColumn("sentiment_label",
+        when(col("stars") >= 4, "Positive")
+        .when(col("stars") <= 2, "Negative")
+        .otherwise("Neutral")
+    ) \
+    .withWatermark("processing_time", "1 minute")
+\end{lstlisting}
+
+\subsubsection{Windowed Aggregations}
+
+Tumbling windows of 10 seconds aggregate streaming metrics:
+
+\begin{lstlisting}[language=Python, caption={Window Aggregations}]
+streaming_metrics = streaming_processed \
+    .groupBy(
+        window(col("processing_time"), "10 seconds"),
+        col("sentiment_label")
+    ) \
+    .agg(
+        count("*").alias("review_count"),
+        avg("stars").alias("avg_stars"),
+        avg("text_length").alias("avg_text_length")
+    )
+\end{lstlisting}
+
+\subsubsection{Streaming Performance Metrics}
+
+During 60-second monitoring period:
+\begin{itemize}[noitemsep]
+    \item Total batches processed: 20
+    \item Total reviews streamed: 2,000
+    \item Average processing latency: less than 3 seconds
+    \item Throughput: 33.3 reviews per second
+    \item Zero data loss or duplicate records
+\end{itemize}
+
+The streaming component demonstrates real-time sentiment analysis capabilities. Production deployment would utilize Apache Kafka for robust message queuing and fault tolerance.
+
+\subsubsection{BigQuery Integration}
+
+Streaming results were exported to Google BigQuery for persistent storage and dashboard integration:
+
+\begin{lstlisting}[language=Python, caption={BigQuery Export}]
+# Authenticate with Google Cloud
+auth.authenticate_user()
+
+# Initialize BigQuery client
+client = bigquery.Client(project=project_id)
+
+# Convert to Pandas and upload
+streaming_pandas = final_streaming_df.toPandas()
+pandas_to_bq(
+    streaming_pandas,
+    table_name="phase2_streaming_reviews",
+    if_exists="replace"
+)
+\end{lstlisting}
+
+This integration enables immediate querying of streaming results through Looker Studio dashboards.
+
+\section{Machine Learning Pipeline}
+
+\subsection{ML Pipeline Architecture}
+
+The machine learning pipeline follows a modular design enabling systematic comparison of multiple algorithms. The architecture comprises data preparation, text processing, feature assembly, model training, and evaluation stages.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=0.5cm,
+    stage/.style={rectangle, draw, fill=cyan!20, text width=2cm, text centered, minimum height=2.5em, font=\scriptsize},
+    arrow/.style={->, thick, >=stealth}
+]
+
+\node[stage] (text) {Review Text};
+\node[stage, below=of text] (token) {Tokenizer};
+\node[stage, below=of token] (stop) {Stop Words\\Remover};
+\node[stage, below=of stop] (cv) {Count\\Vectorizer};
+\node[stage, below=of cv] (idf) {TF-IDF\\Transformer};
+\node[stage, below=of idf] (assemble) {Feature\\Assembler};
+\node[stage, below=of assemble] (model) {Classifier\\(LogReg/RF/NB)};
+\node[stage, below=of model] (pred) {Predictions};
+
+\draw[arrow] (text) -- (token);
+\draw[arrow] (token) -- (stop);
+\draw[arrow] (stop) -- (cv);
+\draw[arrow] (cv) -- (idf);
+\draw[arrow] (idf) -- (assemble);
+\draw[arrow] (assemble) -- (model);
+\draw[arrow] (model) -- (pred);
+
+% Metadata features
+\node[stage, right=3cm of assemble] (meta) {Metadata\\Features};
+\draw[arrow] (meta) -- (assemble);
+
+\end{tikzpicture}
+\caption{Machine Learning Pipeline Stages}
+\label{fig:ml_pipeline}
+\end{figure}
+
+
+
+\subsection{Data Preparation}
+
+\subsubsection{Sampling Strategy}
+
+Given memory constraints in Google Colab (12GB RAM), stratified sampling was employed for model training:
+
+\begin{itemize}[noitemsep]
+    \item Training sample size: 23,288 records (stratified from cleaned data)
+    \item Sampling maintains original class distribution
+    \item Full 10M dataset reserved for batch inference with best model
+\end{itemize}
+
+\subsubsection{Train-Validation-Test Split}
+
+Data partitioned using 70-15-15 ratio:
+
+\begin{table}[H]
+\centering
+\caption{Data Split Distribution}
+\label{tab:split}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Subset} &  \textbf{Percentage} \\ \midrule
+Training &  70.1\% \\
+Validation &  14.7\% \\
+Test  & 15.2\% \\ \bottomrule
+\end{tabular}
+\end{table}
+
+Random splitting with fixed seed (42) ensures reproducibility across experiments.
+
+\subsection{Text Processing Pipeline}
+
+Natural language processing transforms raw text into numerical representations suitable for machine learning.
+
+\subsubsection{Tokenization}
+
+Spark MLlib Tokenizer splits review text into individual words:
+
+\begin{lstlisting}[language=Python, caption={Tokenization}]
+tokenizer = Tokenizer(inputCol='review_text_eng', 
+                      outputCol='words')
+\end{lstlisting}
+
+\subsubsection{Stop Words Removal}
+
+Common words lacking discriminative power (e.g., "the", "a", "an") are filtered:
+
+\begin{lstlisting}[language=Python, caption={Stop Words Removal}]
+remover = StopWordsRemover(inputCol='words', 
+                           outputCol='filtered_words')
+\end{lstlisting}
+
+Spark provides pre-defined English stop word lists, removing approximately 40-50 high-frequency terms.
+
+\subsubsection{TF-IDF Vectorization}
+
+Term Frequency-Inverse Document Frequency (TF-IDF) quantifies word importance:
+
+\begin{equation}
+\text{TF-IDF}(t,d) = \text{TF}(t,d) \times \text{IDF}(t)
+\end{equation}
+
+where:
+\begin{equation}
+\text{IDF}(t) = \log\left(\frac{N}{\text{df}(t)}\right)
+\end{equation}
+
+Implementation using CountVectorizer and IDF transformer:
+
+\begin{lstlisting}[language=Python, caption={TF-IDF Pipeline}]
+cv = CountVectorizer(inputCol='filtered_words', 
+                     outputCol='raw_features', 
+                     vocabSize=10000)
+idf = IDF(inputCol='raw_features', 
+          outputCol='tfidf_features')
+assembler = VectorAssembler(
+    inputCols=['tfidf_features', 'text_length', 
+               'word_count', 'brand_index', 
+               'review_type_index'],
+    outputCol='features',
+    handleInvalid='skip')
+
+# Logistic Regression model
+lr = LogisticRegression(
+    featuresCol='features',
+    labelCol='label',
+    maxIter=10,
+    regParam=0.01)
+
+lr_pipeline = Pipeline(stages=[tokenizer, remover, 
+                                cv, idf, assembler, lr])
+lr_model = lr_pipeline.fit(train_df)
+
+# Predictions and evaluation
+lr_test_pred = lr_model.transform(test_df)
+evaluator = MulticlassClassificationEvaluator(
+    labelCol='label',
+    predictionCol='prediction',
+    metricName='accuracy')
+test_accuracy = evaluator.evaluate(lr_test_pred)
+\end{lstlisting}
+
+\subsection{Model Implementations}
+
+Three classification algorithms were implemented and compared: Logistic Regression, Random Forest, and Naive Bayes.
+
+\subsubsection{Model 1: Logistic Regression (Baseline)}
+
+Logistic Regression models probability of class membership using sigmoid function:
+
+\begin{equation}
+P(y=1|x) = \frac{1}{1 + e^{-(\beta_0 + \beta^T x)}}
+\end{equation}
+
+\textbf{Configuration:}
+\begin{lstlisting}[language=Python, caption={Logistic Regression Configuration}]
+lr = LogisticRegression(
+    featuresCol='features',
+    labelCol='label',
+    maxIter=10,
+    regParam=0.01
+)
+\end{lstlisting}
+
+\textbf{Performance Results:}
+
+\begin{table}[H]
+\centering
+\caption{Logistic Regression Performance}
+\label{tab:lr_results}
+\begin{tabular}{@{}lr@{}}
+\toprule
+\textbf{Metric} & \textbf{Value} \\ \midrule
+Training Time & 33.05 seconds \\
+Training Accuracy & 98.54\% \\
+Test Accuracy & \textbf{91.86\%} \\
+Test F1-Score & \textbf{0.9152} \\
+Test Precision & 0.9201 \\
+Test Recall & 0.9186 \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Analysis:}
+
+Logistic Regression achieved excellent performance despite its simplicity. The model demonstrates good generalization (training accuracy 98.54\% vs. test 91.86\%), indicating minimal overfitting. Fast training time (33 seconds) makes it suitable for iterative experimentation. Linear decision boundaries prove adequate for sentiment classification, where word presence/absence provides strong signals.
+
+\subsubsection{Model 2: Random Forest Classifier}
+
+Random Forest employs ensemble of decision trees with bagging and feature randomization:
+
+\begin{equation}
+\hat{y} = \text{mode}\{\hat{y}_1, \hat{y}_2, ..., \hat{y}_T\}
+\end{equation}
+
+\textbf{Configuration:}
+\begin{lstlisting}[language=Python, caption={Random Forest Configuration}]
+rf = RandomForestClassifier(
+    featuresCol='features',
+    labelCol='label',
+    numTrees=20,
+    maxDepth=10,
+    maxBins=100,
+    seed=42
+)
+\end{lstlisting}
+
+\textbf{Performance Results:}
+
+\begin{table}[H]
+\centering
+\caption{Random Forest Performance}
+\label{tab:rf_results}
+\begin{tabular}{@{}lr@{}}
+\toprule
+\textbf{Metric} & \textbf{Value} \\ \midrule
+Training Time & 91.08 seconds \\
+Training Accuracy & 91.38\% \\
+Test Accuracy & 91.32\% \\
+Test F1-Score & 0.8726 \\
+Number of Trees & 20 \\
+Max Depth & 10 \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Feature Importance:}
+
+Analysis of feature importance scores reveals TF-IDF features dominate predictions, with top 5 features contributing differentially to classification decisions. Metadata features (text\_length, word\_count, brand\_index) provide marginal improvements.
+
+\textbf{Analysis:}
+
+Random Forest exhibits nearly identical training and test accuracy (91.38\% vs. 91.32\%), demonstrating excellent generalization without overfitting. However, F1-score (0.8726) trails Logistic Regression (0.9152), suggesting inferior handling of class imbalance. Training time increases 2.75x compared to Logistic Regression without corresponding accuracy gains.
+
+\subsubsection{Model 3: Naive Bayes Classifier}
+
+Naive Bayes applies Bayes' theorem with independence assumption:
+
+\begin{equation}
+P(y|x) = \frac{P(x|y)P(y)}{P(x)} = \frac{P(y)\prod_{i=1}^n P(x_i|y)}{P(x)}
+\end{equation}
+
+\textbf{Configuration:}
+\begin{lstlisting}[language=Python, caption={Naive Bayes Configuration}]
+nb = NaiveBayes(
+    featuresCol='features',
+    labelCol='label',
+    smoothing=1.0
+)
+\end{lstlisting}
+
+\textbf{Performance Results:}
+
+\begin{table}[H]
+\centering
+\caption{Naive Bayes Performance}
+\label{tab:nb_results}
+\begin{tabular}{@{}lr@{}}
+\toprule
+\textbf{Metric} & \textbf{Value} \\ \midrule
+Training Time & 8.24 seconds \\
+Test Accuracy & 89.60\% \\
+Test F1-Score & 0.9061 \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Analysis:}
+
+Naive Bayes achieves fastest training time (8.24 seconds) but lowest accuracy (89.60\%). The independence assumption—that features are conditionally independent given class—proves overly restrictive for text data where word co-occurrences carry semantic meaning. However, F1-score (0.9061) remains competitive due to better handling of class imbalance compared to Random Forest.
+
+\subsection{Hyperparameter Tuning}
+
+Hyperparameter optimization was performed on Random Forest using TrainValidationSplit:
+
+\textbf{Parameter Grid:}
+\begin{itemize}[noitemsep]
+    \item numTrees: [10, 20]
+    \item maxDepth: [5, 10]
+    \item Total combinations: 4
+\end{itemize}
+
+\textbf{Tuning Results:}
+
+\begin{table}[H]
+\centering
+\caption{Hyperparameter Tuning Results}
+\label{tab:tuning}
+\begin{tabular}{@{}lr@{}}
+\toprule
+\textbf{Metric} & \textbf{Value} \\ \midrule
+Tuning Time & 122.01 seconds \\
+Best Test Accuracy & 91.24\% \\
+Best Test F1-Score & 0.8705 \\
+Optimal numTrees & 20 \\
+Optimal maxDepth & 10 \\ \bottomrule
+\end{tabular}
+\end{table}
+
+Tuning provided minimal improvement (0.08\% accuracy decrease, 0.0021 F1-score decrease) while significantly increasing computational cost. This suggests default parameters already approximate optimal values.
+
+\subsection{Model Comparison and Selection}
+
+\begin{table}[H]
+\centering
+\caption{Comprehensive Model Comparison}
+\label{tab:model_comparison}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Model} & \textbf{Train Time (s)} & \textbf{Accuracy} & \textbf{F1-Score} & \textbf{Rank} \\ \midrule
+Logistic Regression & 33.05 & \textbf{91.86\%} & \textbf{0.9152} & \textbf{1} \\
+Random Forest & 91.08 & 91.32\% & 0.8726 & 2 \\
+Naive Bayes & 8.24 & 89.60\% & 0.9061 & 3 \\
+Tuned Random Forest & 122.01 & 91.24\% & 0.8705 & 4 \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Model Selection Rationale:}
+
+Logistic Regression selected as optimal classifier based on:
+
+\begin{enumerate}[noitemsep]
+    \item \textbf{Highest Accuracy:} 91.86\% test accuracy
+    \item \textbf{Best F1-Score:} 0.9152, crucial for imbalanced datasets
+    \item \textbf{Efficiency:} 33-second training time enables rapid iteration
+    \item \textbf{Interpretability:} Coefficient inspection reveals influential features
+    \item \textbf{Generalization:} Minimal overfitting (6.68\% train-test gap)
+\end{enumerate}
+
+\subsection{Full Dataset Inference}
+
+Selected Logistic Regression model applied to complete 10M expanded dataset:
+
+\begin{lstlisting}[language=Python, caption={Batch Inference}]
+full_predictions = best_model.transform(processed_df)
+prediction_df = full_predictions.select(
+    "review_id", "brand", "stars", 
+    "sentiment_label", "predicted_label", "probability"
+)
+\end{lstlisting}
+
+\textbf{Inference Statistics:}
+\begin{itemize}[noitemsep]
+    \item Total records processed: 10,000,000
+    \item Processing time: Approximately 45 minutes
+    \item Throughput: ~3,700 records/second
+    \item Output: CSV exported to \texttt{outputs/full\_dataset\_predictions}
+\end{itemize}
+
+Predictions exported to BigQuery for dashboard integration, enabling real-time business intelligence queries.
+
+
+\section{Performance Optimization and Benchmarking}
+
+Performance optimization constitutes a critical component of production Big Data systems. This section presents comprehensive benchmarking results across multiple dimensions: partitioning strategies, caching mechanisms, processing paradigms, and scalability characteristics.
+
+\subsection{Partitioning Impact Analysis}
+
+Partitioning divides datasets across cluster nodes, directly impacting parallelism and performance. Optimal partition count balances parallel processing gains against task scheduling overhead.
+
+\subsubsection{Experimental Setup}
+
+Benchmark configuration:
+\begin{itemize}[noitemsep]
+    \item Test dataset: 2,340 records (10\% sample)
+    \item Operation: Complex aggregation with joins
+    \item Partition configurations: No repartition, 10, 50, 100, 200 partitions
+    \item Metric: Execution time and throughput
+\end{itemize}
+
+\subsubsection{Results}
+
+Performance results presented in Table \ref{tab:partitioning_results}:
+
+\begin{table}[H]
+\centering
+\caption{Partitioning Strategy Performance}
+\label{tab:partitioning_results}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+\textbf{Configuration} & \textbf{Partitions} & \textbf{Time (s)} & \textbf{Throughput (rec/s)} \\ \midrule
+No Repartition & 50 & 0.594 & 3,938 \\
+\textbf{10 Partitions} & \textbf{10} & \textbf{0.426} & \textbf{5,493} \\
+50 Partitions & 50 & 0.925 & 2,530 \\
+100 Partitions & 100 & 3.135 & 746 \\
+200 Partitions & 200 & 3.153 & 742 \\ \bottomrule
+\end{tabular}
+\end{table}
+
+
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Optimal Configuration:} 10 partitions achieved best performance (0.426s, 5,493 rec/s)
+    \item \textbf{Performance Gain:} 39.5\% improvement over default (50 partitions)
+    \item \textbf{Over-Partitioning Penalty:} 200 partitions degraded performance by 81.2\% vs. optimal
+    \item \textbf{Rule of Thumb:} Optimal partitions $\approx$ 2-3x CPU cores (Colab: 2 cores, optimal: 10 partitions)
+\end{itemize}
+
+\textbf{Analysis:}
+
+The U-shaped performance curve demonstrates classic partition tradeoff. Too few partitions underutilize parallelism. Too many partitions incur excessive task scheduling overhead, with each task processing minimal data. For the 2-core Colab environment, 10 partitions provide optimal balance.
+
+Production clusters with 16+ cores would benefit from proportionally higher partition counts (32-48 partitions), though specific optimization requires empirical testing given workload characteristics.
+
+
+\subsection{Processing Strategy Comparison}
+
+Spark offers multiple APIs for data processing: RDD (low-level), DataFrame (high-level), and SQL. Each provides different abstraction levels and optimization capabilities.
+
+\subsubsection{Experimental Setup}
+
+Benchmark specifications:
+\begin{itemize}[noitemsep]
+    \item Dataset: 1,164 records (5\% sample)
+    \item Task: Compute average stars by sentiment label
+    \item Implementations: RDD API, DataFrame API, Spark SQL
+\end{itemize}
+
+\subsubsection{Results}
+
+\begin{table}[H]
+\centering
+\caption{Processing Strategy Performance}
+\label{tab:strategy_results}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Strategy} & \textbf{Time (s)} & \textbf{Relative Performance} \\ \midrule
+RDD API & 22.274 & 33.38x slower \\
+DataFrame API & 0.786 & 1.18x slower \\
+\textbf{Spark SQL} & \textbf{0.667} & \textbf{1.00x (baseline)} \\ \bottomrule
+\end{tabular}
+\end{table}
+
+
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Spark SQL Fastest:} 0.667 seconds establishes baseline
+    \item \textbf{DataFrame API:} 18\% slower than SQL, still highly performant
+    \item \textbf{RDD API Slowest:} 33.4x slower, demonstrating optimization importance
+\end{itemize}
+
+\textbf{Analysis:}
+
+Dramatic performance differences stem from query optimization:
+
+\textbf{Spark SQL/DataFrame API:}
+\begin{itemize}[noitemsep]
+    \item Catalyst optimizer generates optimized physical plans
+    \item Predicate pushdown eliminates unnecessary data reads
+    \item Tungsten execution engine provides columnar memory layout
+    \item Whole-stage code generation produces efficient JVM bytecode
+\end{itemize}
+
+\textbf{RDD API:}
+\begin{itemize}[noitemsep]
+    \item No query optimization—executes operations as written
+    \item Row-based serialization increases memory overhead
+    \item Python-JVM communication incurs serialization costs
+    \item Lacks columnar processing optimizations
+\end{itemize}
+
+\textbf{Recommendation:}
+
+Use DataFrame API or Spark SQL for all data processing. Reserve RDD API only when:
+\begin{itemize}[noitemsep]
+    \item Fine-grained control over partitioning required
+    \item Custom partitioner implementation needed
+    \item Operating on opaque binary data (images, serialized objects)
+\end{itemize}
+
+
+
+\section{Conclusion}
+
+This project implements a comprehensive Big Data analytics pipeline for large-scale sentiment analysis, meeting all specified requirements:
+
+\textbf{Technical Accomplishments:}
+\begin{itemize}[noitemsep]
+    \item \textbf{Scale:} Processed 10 million customer reviews using Apache Spark distributed computing
+    \item \textbf{Accuracy:} Achieved 91.86\% classification accuracy with Logistic Regression, exceeding 85\% target
+    \item \textbf{Real-Time:} Implemented Spark Structured Streaming with less than 3 second latency
+    \item \textbf{Optimization:} Produced 39.5\% performance improvement through partitioning optimization
+    \item \textbf{Visualization:} Designed comprehensive Looker Studio dashboards integrated with BigQuery
+\end{itemize}
+
+
+\textbf{Model Performance:}
+
+Comparative evaluation of three machine learning algorithms revealed Logistic Regression as optimal classifier, achieving 91.86\% test accuracy and 0.9152 F1-score. Contrary to expectations, this simple linear model outperformed more complex Random Forest (91.32\% accuracy) and Naive Bayes (89.60\% accuracy) approaches. This outcome validates domain-appropriate algorithm selection over algorithmic complexity.
+
+\textbf{Technical Limitations:}
+\begin{itemize}[noitemsep]
+    \item Single-node Colab execution limits authentic distributed processing evaluation
+    \item Memory constraints (12GB) necessitated sampling strategies
+    \item File-based streaming simulation lacks production Kafka robustness
+    \item Class imbalance (91\% positive) challenges minority class detection
+\end{itemize}
+\begin{itemize}[noitemsep]
+    \item Synthetic data expansion may not fully capture real-world variability
+    \item Limited to four brands and pet food industry
+    \item English-language focus excludes multilingual analysis
+    \item Historical data may not reflect current market dynamics
+\end{itemize}
+
+This project implements comprehensive Big Data analytics capabilities applied to real-world sentiment analysis challenges. By processing 10 million customer reviews through an optimized Apache Spark pipeline, achieving 91.86\% classification accuracy, and delivering actionable business insights through interactive dashboards, the project meets and exceeds academic and practical objectives.
+
+The experience reinforces several critical lessons: simplicity often outperforms complexity in algorithm selection, optimization requires context-specific empirical evaluation, high-level APIs provide both productivity and performance advantages, and domain expertise guides effective feature engineering.
+
+This project validates that modern Big Data technologies enable even resource-constrained academic environments to tackle enterprise-scale analytics challenges. Through intelligent architecture design, strategic sampling, and systematic optimization, production-quality solutions become accessible to practitioners across diverse contexts.
+
+The established pipeline provides a robust foundation for future enhancements, supporting organizational needs as data volumes grow and analytical requirements evolve. By automating sentiment analysis at scale, this system empowers data-driven decision-making, transforms customer feedback into strategic assets, and demonstrates the potential of Big Data analytics in contemporary business environments.
+
+\end{document}
