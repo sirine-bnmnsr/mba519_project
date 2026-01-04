@@ -1,22 +1,21 @@
 # =============================================================================
-# PHASE 2: REAL-TIME STREAMING INGESTION
-# Simulated Kafka-like streaming using file-based Spark Structured Streaming
+# PHASE 2: REAL-TIME STREAMING INGESTION - FULL 1M ROWS TO BIGQUERY
 # =============================================================================
 
 import os
 import time
 import threading
-import random
+import shutil
+import builtins
 from datetime import datetime
 
-import numpy as np
 import pandas as pd
 
 from pyspark.sql.types import *
-from pyspark.sql.functions import *
+from pyspark.sql.functions import col, when, length
 
 print("\n" + "=" * 80)
-print("=== PHASE 2: REAL-TIME STREAMING INGESTION ===")
+print("=== PHASE 2: STREAMING 1M REVIEWS TO BIGQUERY ===")
 print("=" * 80)
 
 
@@ -40,20 +39,23 @@ streaming_schema = StructType([
 # =============================================================================
 streaming_dir = "/content/streaming_reviews"
 checkpoint_dir = "/content/streaming_checkpoint"
-output_dir = "/content/streaming_output"
 
-for directory in [streaming_dir, checkpoint_dir, output_dir]:
-    os.makedirs(directory, exist_ok=True)
+for d in [streaming_dir, checkpoint_dir]:
+    os.makedirs(d, exist_ok=True)
+
+# Always reset checkpoint for notebook runs
+shutil.rmtree(checkpoint_dir, ignore_errors=True)
+os.makedirs(checkpoint_dir, exist_ok=True)
 
 print("✓ Created streaming directories")
 
 
 # =============================================================================
-# CONVERT SPARK → PANDAS ONCE (CRITICAL FIX)
+# PREPARE 1M ROWS
 # =============================================================================
-# Sample a smaller subset of the expanded_df to avoid out-of-memory errors
-# when converting to Pandas, as the original expanded_df has 10 million rows.
-expanded_pd = expanded_df.sample(False, 0.01, seed=42).select(
+print("\n=== Preparing 1M rows for streaming ===")
+
+expanded_pd = expanded_df.select(
     "brand",
     "review_type",
     "review_id",
@@ -61,57 +63,53 @@ expanded_pd = expanded_df.sample(False, 0.01, seed=42).select(
     "stars",
     "review_text_eng",
     "review_title_eng"
-).toPandas()
+).limit(1_000_000).toPandas()
 
-print(f"✓ Converted expanded_df to pandas: {len(expanded_pd):,} rows")
+print(f"✓ Converted {len(expanded_pd):,} rows to pandas")
 
 
 # =============================================================================
-# STREAMING DATA GENERATOR (PANDAS-BASED)
+# STREAMING DATA GENERATOR
 # =============================================================================
-def generate_streaming_reviews(batch_size=100, interval=3, duration=60):
-    """
-    Simulate real-time review stream by writing JSON micro-batches
-    """
-    print(f"\n=== Starting Streaming Data Generator ===")
-    print(f"  Batch size: {batch_size} reviews")
-    print(f"  Interval: {interval} seconds")
-    print(f"  Duration: {duration} seconds")
+def generate_streaming_reviews_full(batch_size=1000, interval=2):
+    print("\n=== Starting Full Dataset Streaming ===")
 
+    total_batches = (len(expanded_pd) + batch_size - 1) // batch_size
     start_time = time.time()
-    batch_num = 0
 
-    while time.time() - start_time < duration:
-        batch = expanded_pd.sample(
-            n=batch_size,
-            replace=True
-        ).copy()
+    for batch_num in range(total_batches):
+        start_idx = batch_num * batch_size
+        end_idx = builtins.min(start_idx + batch_size, len(expanded_pd))
 
+        batch = expanded_pd.iloc[start_idx:end_idx].copy()
         now = datetime.now()
+
         batch["review_ts"] = now.strftime("%Y-%m-%d %H:%M:%S")
         batch["processing_time"] = now
 
-        # Simulate noisy star ratings (10%)
-        mask = np.random.rand(len(batch)) < 0.1
-        batch.loc[mask, "stars"] = np.random.randint(1, 6, size=mask.sum())
+        batch.to_json(
+            f"{streaming_dir}/batch_{batch_num:05d}.json",
+            orient="records",
+            lines=True
+        )
 
-        batch_file = f"{streaming_dir}/batch_{batch_num:05d}.json"
-        batch.to_json(batch_file, orient="records", lines=True)
-
-        batch_num += 1
-        print(f"  Batch {batch_num}: {batch_size} reviews written at {now.strftime('%H:%M:%S')}")
+        if (batch_num + 1) % 10 == 0:
+            elapsed = time.time() - start_time
+            print(
+                f"  {end_idx:,}/{len(expanded_pd):,} rows | "
+                f"{end_idx / elapsed:.0f} rows/sec"
+            )
 
         time.sleep(interval)
 
-    print(f"\n✓ Streaming simulation complete: {batch_num} batches generated")
+    print("✓ Streaming generator finished")
 
 
 # =============================================================================
-# START STREAMING GENERATOR (BACKGROUND THREAD)
+# START STREAMING GENERATOR THREAD
 # =============================================================================
 streaming_thread = threading.Thread(
-    target=generate_streaming_reviews,
-    args=(100, 3, 60),
+    target=generate_streaming_reviews_full,
     daemon=True
 )
 streaming_thread.start()
@@ -120,13 +118,13 @@ time.sleep(5)
 
 
 # =============================================================================
-# SPARK STRUCTURED STREAMING SETUP
+# SPARK STREAMING SETUP
 # =============================================================================
 print("\n=== Setting up Spark Structured Streaming ===")
 
 streaming_df = spark.readStream \
     .schema(streaming_schema) \
-    .option("maxFilesPerTrigger", 1) \
+    .option("maxFilesPerTrigger", 2) \
     .json(streaming_dir)
 
 print("✓ Streaming DataFrame created")
@@ -135,102 +133,65 @@ print("✓ Streaming DataFrame created")
 # =============================================================================
 # REAL-TIME TRANSFORMATIONS
 # =============================================================================
-streaming_processed = streaming_df \
-    .withColumn("text_length", length(col("review_text_eng"))) \
+streaming_processed = (
+    streaming_df
+    .withColumn("text_length", length(col("review_text_eng")))
     .withColumn(
         "sentiment_label",
-        when(col("stars") >= 4, "Positive")\
-        .when(col("stars") <= 2, "Negative")\
+        when(col("stars") >= 4, "Positive")
+        .when(col("stars") <= 2, "Negative")
         .otherwise("Neutral")
-    ) \
-    .withWatermark("processing_time", "1 minute")
+    )
+)
 
 
 # =============================================================================
-# REAL-TIME AGGREGATIONS
+# FOREACH-BATCH BIGQUERY WRITER (CORRECT WAY)
 # =============================================================================
-streaming_metrics = streaming_processed \
-    .groupBy(
-        window(col("processing_time"), "10 seconds"),
-        col("sentiment_label")
-    ) \
-    .agg(
-        count("*").alias("review_count"),
-        avg("stars").alias("avg_stars"),
-        avg("text_length").alias("avg_text_length")
+def write_batch_to_bigquery(batch_df, batch_id):
+    """
+    Executed exactly once per micro-batch by Spark
+    """
+    if batch_df.count() == 0:
+        return
+
+    pdf = batch_df.toPandas()
+
+    pandas_to_bq(
+        pdf,
+        table_name="phase2_streaming_reviews_full",
+        if_exists="append"
     )
 
+    print(f"✓ BQ batch {batch_id}: wrote {len(pdf):,} rows")
+
 
 # =============================================================================
-# STREAM OUTPUTS (MEMORY SINK)
+# START STREAMING QUERY
 # =============================================================================
-query_reviews = streaming_processed.writeStream \
-    .outputMode("append") \
-    .format("memory") \
-    .queryName("streaming_reviews") \
+query = (
+    streaming_processed.writeStream
+    .foreachBatch(write_batch_to_bigquery)
+    .outputMode("append")
+    .option("checkpointLocation", checkpoint_dir)
     .start()
-
-query_metrics = streaming_metrics.writeStream \
-    .outputMode("complete") \
-    .format("memory") \
-    .queryName("streaming_metrics") \
-    .start()
-
-print("✓ Streaming queries started")
-
-
-# =============================================================================
-# MONITOR STREAMING
-# =============================================================================
-print("\n=== Monitoring Real-Time Stream ===")
-
-for i in range(6):
-    time.sleep(5)
-
-    current_count = spark.sql(
-        "SELECT COUNT(*) AS count FROM streaming_reviews"
-    ).collect()[0]["count"]
-
-    print(f"\n[{i * 5}s] Processed reviews: {current_count:,}")
-
-    if current_count > 0:
-        spark.sql("""
-            SELECT sentiment_label,
-                   COUNT(*) AS count,
-                   ROUND(AVG(stars), 2) AS avg_stars
-            FROM streaming_reviews
-            GROUP BY sentiment_label
-            ORDER BY sentiment_label
-        """).show()
-
-
-# =============================================================================
-# STOP STREAMING
-# =============================================================================
-print("\n=== Stopping Streaming Queries ===")
-query_reviews.stop()
-query_metrics.stop()
-
-
-# =============================================================================
-# FINAL STREAMING RESULTS
-# =============================================================================
-final_streaming_df = spark.sql("SELECT * FROM streaming_reviews")
-final_streaming_df.cache()
-
-streaming_count = final_streaming_df.count()
-
-print(f"\n✓ Streaming Phase Complete")
-print(f"  Total records processed: {streaming_count:,}")
-print(f"  Processing rate: {streaming_count / 60:.1f} reviews/second")
-
-final_streaming_pd = final_streaming_df.toPandas()
-
-pandas_to_bq(
-    final_streaming_pd,
-    table_name="phase2_streaming_reviews",
-    if_exists="replace"
 )
+
+print("✓ Streaming query started")
+
+
+# =============================================================================
+# MONITOR PROGRESS
+# =============================================================================
+print("\n=== Monitoring Stream Progress ===")
+
+while streaming_thread.is_alive():
+    time.sleep(15)
+    print("  Streaming still running...")
+
+streaming_thread.join()
+query.awaitTermination(timeout=60)
+
 
 # =============================================================================
 # COMBINE BATCH + STREAMING DATA
@@ -250,4 +211,8 @@ print(f"  Batch data: {spark_df.count():,}")
 print(f"  Streaming data: {streaming_count:,}")
 
 print("\n✓ Phase 2 Complete: Streaming Integration")
+print("=" * 80)
+
+
+print("\n Full Dataset Streaming to BigQuery")
 print("=" * 80)
