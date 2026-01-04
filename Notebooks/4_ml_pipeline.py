@@ -283,29 +283,28 @@ cluster_analysis.show()
 print("\n=== MODEL COMPARISON SUMMARY ===")
 print("="*80)
 
-comparison_data = [
-    ("Logistic Regression", lr_train_time, lr_test_acc, lr_test_f1),
-    ("Random Forest", rf_train_time, rf_test_acc, rf_test_f1),
-    ("Naive Bayes", nb_train_time, nb_test_acc, nb_test_f1),
-    ("Tuned Random Forest", tuning_time, best_model_acc, best_model_f1)
+model_results = [
+    ("Logistic Regression", lr_model, lr_train_time, lr_test_acc, lr_test_f1),
+    ("Random Forest", rf_model, rf_train_time, rf_test_acc, rf_test_f1),
+    ("Naive Bayes", nb_model, nb_train_time, nb_test_acc, nb_test_f1),
+    ("Tuned Random Forest", cv_model, tuning_time, best_model_acc, best_model_f1)
 ]
 
 print(f"\n{'Model':<25} {'Train Time':<15} {'Test Acc':<12} {'F1-Score':<12}")
 print("-" * 64)
-for model, train_time, acc, f1 in comparison_data:
-    print(f"{model:<25} {train_time:>10.2f}s     {acc:>8.4f}     {f1:>8.4f}")
 
+best_model = None
+best_f1 = -1
 
-print("\n✓ Phase 4 Complete: Machine Learning Pipeline")
-print("="*80)
+for name, model, train_time, acc, f1 in model_results:
+    print(f"{name:<25} {train_time:>10.2f}s     {acc:>8.4f}     {f1:>8.4f}")
+    if f1 > best_f1:
+        best_f1 = f1
+        best_model = model
+        best_model_name = name
 
+print(f"\n✓ Best model selected: {best_model_name} (F1 = {best_f1:.4f})")
 
-import os
-from pyspark.sql.functions import col
-
-print("\n" + "="*80)
-print("=== FULL DATASET INFERENCE ===")
-print("="*80)
 
 # ============================================================================
 # PATH CONFIGURATION
@@ -336,18 +335,36 @@ prediction_df = full_predictions.select(
 record_count = prediction_df.count()
 print(f"✓ Inference complete on {record_count:,} records")
 
-# ============================================================================
-# SAVE AS CSV
-# ============================================================================
+spark_df_to_bq(
+    spark_df,
+    "spark_df",
+    write_mode="replace"
+)
 
-print("\nSaving predictions as CSV...")
 
-prediction_df \
-    .coalesce(1) \
-    .write \
-    .mode("overwrite") \
-    .option("header", "true") \
-    .csv(PREDICTION_OUTPUT_PATH)
+comparison_df = spark.createDataFrame(
+    comparison_data,
+    ["model_name", "train_time_sec", "test_accuracy", "test_f1"]
+)
+
+spark_df_to_bq(
+    comparison_df,
+    "phase4_model_comparison",
+    write_mode="replace"
+)
+
+spark_df_to_bq(
+    cluster_analysis,
+    "phase4_cluster_analysis",
+    write_mode="replace"
+)
+
+
+spark_df_to_bq(
+    prediction_df,
+    "phase4_model_predictions",
+    write_mode="replace"
+)
 
 print(f"✓ Predictions saved at: {PREDICTION_OUTPUT_PATH}")
 print("="*80)
