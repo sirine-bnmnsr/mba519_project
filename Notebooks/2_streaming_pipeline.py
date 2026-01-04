@@ -19,6 +19,7 @@ print("\n" + "=" * 80)
 print("=== PHASE 2: REAL-TIME STREAMING INGESTION ===")
 print("=" * 80)
 
+
 # =============================================================================
 # STREAMING SCHEMA
 # =============================================================================
@@ -223,6 +224,13 @@ print(f"\n✓ Streaming Phase Complete")
 print(f"  Total records processed: {streaming_count:,}")
 print(f"  Processing rate: {streaming_count / 60:.1f} reviews/second")
 
+final_streaming_pd = final_streaming_df.toPandas()
+
+pandas_to_bq(
+    final_streaming_pd,
+    table_name="phase2_streaming_reviews",
+    if_exists="replace"
+)
 
 # =============================================================================
 # COMBINE BATCH + STREAMING DATA
@@ -235,9 +243,11 @@ combined_df = spark_df.unionByName(
 
 combined_df.cache()
 
+
+
 print(f"✓ Combined dataset: {combined_df.count():,} total reviews")
 print(f"  Batch data: {spark_df.count():,}")
 print(f"  Streaming data: {streaming_count:,}")
 
 print("\n✓ Phase 2 Complete: Streaming Integration")
-print("=" * 80)
+print("=" * 80)"""
