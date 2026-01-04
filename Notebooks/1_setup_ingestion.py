@@ -19,8 +19,72 @@ from pyspark.ml import Pipeline
 from pyspark.sql.functions import expr
 
 # BigQuery imports
-# Install required libraries (run once)
+# Install required libraries
 !pip install google-cloud-bigquery pandas db-dtypes
+!pip install -q pandas-gbq google-cloud-bigquery
+
+from google.cloud import bigquery
+import pandas as pd
+
+PROJECT_ID = "sentiment-analysis-a"
+DATASET = "outputs"
+
+client = bigquery.Client(project=PROJECT_ID)
+
+def pandas_to_bq(
+    pdf: pd.DataFrame,
+    table_name: str,
+    if_exists: str = "replace"  # "append" or "replace"
+):
+    table_id = f"{PROJECT_ID}.{DATASET}.{table_name}"
+
+    job_config = bigquery.LoadJobConfig(
+        write_disposition={
+            "replace": bigquery.WriteDisposition.WRITE_TRUNCATE,
+            "append": bigquery.WriteDisposition.WRITE_APPEND
+        }[if_exists],
+        autodetect=True
+    )
+
+    job = client.load_table_from_dataframe(
+        pdf,
+        table_id,
+        job_config=job_config
+    )
+    job.result()
+
+    print(f"✓ Loaded {len(pdf):,} rows → {table_id}")
+
+
+def spark_df_to_bq(
+    spark_df,
+    table_name,
+    write_mode="replace",   # "replace" or "append"
+    max_rows=2_000_000
+):
+    
+
+    count = spark_df.count()
+    print(f"Uploading {count:,} rows → {table_name}")
+
+    if count > max_rows:
+        raise ValueError(
+            f"Too many rows ({count:,}). "
+            f"Sample or aggregate before upload."
+        )
+
+    pdf = spark_df.toPandas()
+
+    pdf.to_gbq(
+        destination_table=f"{DATASET}.{table_name}",
+        project_id=PROJECT_ID,
+        if_exists=write_mode
+    )
+
+    print(f"✓ Uploaded to BigQuery: {DATASET}.{table_name}")
+
+
+
 # Import libraries
 from google.cloud import bigquery
 from google.colab import auth
@@ -258,7 +322,3 @@ job = client.load_table_from_dataframe(pandas_df, full_table_id, job_config=job_
 job.result()  # Wait for the job to complete
 
 print(f'Successfully loaded {job.output_rows} rows to {full_table_id}')
-
-
-
-
