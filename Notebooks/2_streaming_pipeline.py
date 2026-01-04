@@ -1,5 +1,5 @@
 # =============================================================================
-# PHASE 2: REAL-TIME STREAMING INGESTION - FULL 1M ROWS TO BIGQUERY
+# PHASE 2: REAL-TIME STREAMING INGESTION
 # =============================================================================
 
 import os
