@@ -6,7 +6,7 @@ A complete big data analytics pipeline for sentiment analysis of customer review
 
 ---
 
-## 📋 Project Overview
+## Project Overview
 
 ### Objective
 Design and implement a full big data analytics pipeline that processes millions of e-commerce customer reviews to perform sentiment classification, incorporating batch and streaming data ingestion, distributed machine learning, cloud storage, and performance optimization.
@@ -21,7 +21,7 @@ Design and implement a full big data analytics pipeline that processes millions 
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -72,7 +72,7 @@ Design and implement a full big data analytics pipeline that processes millions 
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```
 sentiment-analysis-bigdata/
